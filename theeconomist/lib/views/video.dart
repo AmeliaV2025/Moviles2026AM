@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
@@ -49,9 +50,7 @@ class VideoItem {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Pantalla de videos
-// ---------------------------------------------------------------------------
 
 class VideoView extends StatefulWidget {
   const VideoView({super.key});
@@ -575,12 +574,11 @@ class _VideoViewState extends State<VideoView> {
                       video.titulo,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style:
-                          (destacado ? AppTypography.h5 : AppTypography.h6)
-                              .copyWith(
-                                color: AppColors.neutral100,
-                                fontWeight: FontWeight.w600,
-                              ),
+                      style: (destacado ? AppTypography.h5 : AppTypography.h6)
+                          .copyWith(
+                            color: AppColors.neutral100,
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
 
                     const SizedBox(height: AppSpacing.sm8),
@@ -711,9 +709,7 @@ class _VideoViewState extends State<VideoView> {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Reproductor estilo short: pantalla completa, se desliza hacia arriba
-// ---------------------------------------------------------------------------
 
 class ReproductorShortsScreen extends StatefulWidget {
   const ReproductorShortsScreen({
@@ -796,6 +792,12 @@ class _PaginaShortState extends State<_PaginaShort> {
   VideoPlayerController? _controller;
   bool _error = false;
 
+  // Botones de la derecha (por ahora solo viven mientras la pantalla está abierta)
+  bool _meGusta = false;
+  bool _guardado = false;
+  final List<String> _comentarios = [];
+  final _campoComentario = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -823,6 +825,7 @@ class _PaginaShortState extends State<_PaginaShort> {
   @override
   void dispose() {
     _controller?.dispose();
+    _campoComentario.dispose();
     super.dispose();
   }
 
@@ -856,6 +859,182 @@ class _PaginaShortState extends State<_PaginaShort> {
     } else {
       controller.play();
     }
+  }
+
+  void _mensaje(String texto) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(texto)));
+  }
+
+  // Copia el enlace del video al portapapeles
+  Future<void> _compartir() async {
+    await Clipboard.setData(ClipboardData(text: widget.video.url));
+    _mensaje('Enlace copiado');
+  }
+
+  // Hoja de comentarios
+  void _abrirComentarios() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.neutral100,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          void enviar() {
+            final texto = _campoComentario.text.trim();
+            if (texto.isEmpty) return;
+
+            setState(() => _comentarios.add(texto));
+            setSheetState(() {});
+            _campoComentario.clear();
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.md16,
+              AppSpacing.sm8,
+              AppSpacing.md16,
+              MediaQuery.viewInsetsOf(sheetContext).bottom + AppSpacing.md16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Comentarios',
+                  style: AppTypography.h6.copyWith(
+                    color: AppColors.primary500,
+                  ),
+                ),
+
+                const SizedBox(height: AppSpacing.md16),
+
+                if (_comentarios.isEmpty)
+                  Text(
+                    'Todavía no hay comentarios.',
+                    style: AppTypography.body2.copyWith(
+                      color: AppColors.neutral600,
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _comentarios.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: AppSpacing.sm8),
+                      itemBuilder: (_, i) => Text(
+                        _comentarios[i],
+                        style: AppTypography.body1.copyWith(
+                          color: AppColors.neutral800,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: AppSpacing.md16),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _campoComentario,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          hintText: 'Escribe un comentario',
+                        ),
+                        onSubmitted: (_) => enviar(),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Enviar',
+                      color: AppColors.secondary300,
+                      onPressed: enviar,
+                      icon: const Icon(Icons.send),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Un botón de la columna de la derecha
+  Widget _accion({
+    required IconData icono,
+    required String tooltip,
+    required VoidCallback onPressed,
+    Color color = AppColors.neutral100,
+    String? etiqueta,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          iconSize: AppSpacing.xl32,
+          color: color,
+          icon: Icon(icono),
+        ),
+        if (etiqueta != null)
+          Text(
+            etiqueta,
+            style: AppTypography.caption.copyWith(color: AppColors.neutral100),
+          ),
+      ],
+    );
+  }
+
+  // Columna de íconos: me gusta, comentar, guardar y compartir
+  Widget _acciones() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _accion(
+          icono: _meGusta ? Icons.favorite : Icons.favorite_border,
+          tooltip: 'Me gusta',
+          color: _meGusta ? AppColors.primary500 : AppColors.neutral100,
+          onPressed: () => setState(() => _meGusta = !_meGusta),
+        ),
+
+        const SizedBox(height: AppSpacing.sm8),
+
+        _accion(
+          icono: Icons.chat_bubble_outline,
+          tooltip: 'Comentarios',
+          etiqueta: _comentarios.isEmpty ? null : '${_comentarios.length}',
+          onPressed: _abrirComentarios,
+        ),
+
+        const SizedBox(height: AppSpacing.sm8),
+
+        _accion(
+          icono: _guardado ? Icons.bookmark : Icons.bookmark_border,
+          tooltip: 'Guardar',
+          onPressed: () {
+            setState(() => _guardado = !_guardado);
+            _mensaje(_guardado ? 'Video guardado' : 'Video quitado de guardados');
+          },
+        ),
+
+        const SizedBox(height: AppSpacing.sm8),
+
+        _accion(
+          icono: Icons.share_outlined,
+          tooltip: 'Compartir',
+          onPressed: _compartir,
+        ),
+      ],
+    );
   }
 
   // Miniatura con indicador de carga mientras el video no está listo
@@ -956,9 +1135,10 @@ class _PaginaShortState extends State<_PaginaShort> {
               },
             ),
 
+          // Título y categoría (con espacio a la derecha para los íconos)
           Positioned(
             left: AppSpacing.md16,
-            right: AppSpacing.md16,
+            right: AppSpacing.xxl48 + AppSpacing.md16,
             bottom: AppSpacing.lg24,
             child: SafeArea(
               child: Column(
@@ -986,6 +1166,13 @@ class _PaginaShortState extends State<_PaginaShort> {
                 ],
               ),
             ),
+          ),
+
+          // Íconos de la derecha
+          Positioned(
+            right: AppSpacing.sm8,
+            bottom: AppSpacing.lg24,
+            child: SafeArea(child: _acciones()),
           ),
 
           // Barra de progreso delgada abajo

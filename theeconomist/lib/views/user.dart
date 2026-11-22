@@ -78,7 +78,7 @@ class BotonGuardar extends StatelessWidget {
 class UserView extends StatefulWidget {
   const UserView({super.key, this.onAbrirNoticia});
 
-  // Abre el detalle de una noticia (igual que en Weekly)
+  
   final ValueChanged<Map<String, dynamic>>? onAbrirNoticia;
 
   @override

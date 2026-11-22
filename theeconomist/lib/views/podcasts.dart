@@ -12,9 +12,6 @@ import '../theme/theme.dart';
 // Secciones en las que se agrupan los podcasts
 const _secciones = ['Daily and weekly', 'Special series'];
 
-// Ancho de cada tarjeta como fracción del ancho de la pantalla
-const double _anchoTarjeta = 0.45;
-
 class Episodio {
   const Episodio({
     required this.id,
@@ -51,7 +48,6 @@ String _formato(Duration d) {
   return '${dos(d.inMinutes)}:${dos(d.inSeconds.remainder(60))}';
 }
 
-// Portada: muestra una imagen de internet o un archivo recién elegido
 Widget _portada({String url = '', XFile? archivo, double proporcion = 1}) {
   final ImageProvider? imagen = archivo != null
       ? FileImage(File(archivo.path))
@@ -82,9 +78,7 @@ Widget _portada({String url = '', XFile? archivo, double proporcion = 1}) {
   );
 }
 
-
 // Lista de podcasts
-
 
 class PodcastsView extends StatefulWidget {
   const PodcastsView({super.key});
@@ -187,7 +181,7 @@ class _PodcastsViewState extends State<PodcastsView> {
     try {
       await _episodios.doc(episodio.id).delete();
 
-      // Borrar también la imagen guardada (si falla, no es grave)
+      // Borrar también la imagen guardada
       if (episodio.imagen.isNotEmpty) {
         try {
           await FirebaseStorage.instance.refFromURL(episodio.imagen).delete();
@@ -528,9 +522,9 @@ class _PodcastsViewState extends State<PodcastsView> {
     );
   }
 
+  // Cada sección muestra sus podcasts en una cuadrícula de 2 columnas.
+  // Si hay más, las tarjetas bajan a una nueva fila.
   Widget _seccion(String nombre, List<Episodio> lista) {
-    final ancho = MediaQuery.sizeOf(context).width * _anchoTarjeta;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -541,18 +535,24 @@ class _PodcastsViewState extends State<PodcastsView> {
 
         const SizedBox(height: AppSpacing.md16),
 
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < lista.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.md16),
-                  child: SizedBox(width: ancho, child: _tarjeta(lista, i)),
-                ),
-            ],
-          ),
+        LayoutBuilder(
+          builder: (context, restricciones) {
+            // Dos columnas con un espacio entre ellas.
+            // floorToDouble evita que un redondeo mande la segunda tarjeta
+            // a la fila de abajo.
+            final ancho =
+                ((restricciones.maxWidth - AppSpacing.md16) / 2)
+                    .floorToDouble();
+
+            return Wrap(
+              spacing: AppSpacing.md16,
+              runSpacing: AppSpacing.lg24,
+              children: [
+                for (var i = 0; i < lista.length; i++)
+                  SizedBox(width: ancho, child: _tarjeta(lista, i)),
+              ],
+            );
+          },
         ),
 
         const SizedBox(height: AppSpacing.md16),
@@ -606,11 +606,6 @@ class _PodcastsViewState extends State<PodcastsView> {
               AppSpacing.xxl48 + AppSpacing.xl32,
             ),
             children: [
-              Text(
-                'Podcasts',
-                style: AppTypography.h5.copyWith(color: AppColors.neutral800),
-              ),
-
               const SizedBox(height: AppSpacing.lg24),
 
               if (episodios.isEmpty)
@@ -635,9 +630,7 @@ class _PodcastsViewState extends State<PodcastsView> {
   }
 }
 
-
 // Reproductor
-
 
 class ReproductorPodcastScreen extends StatefulWidget {
   const ReproductorPodcastScreen({
@@ -851,58 +844,58 @@ class _ReproductorPodcastScreenState extends State<ReproductorPodcastScreen> {
         style: IconButton.styleFrom(foregroundColor: AppColors.neutral600),
       ),
       child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        IconButton(
-          tooltip: 'Anterior',
-          onPressed: hayAnterior ? () => _cargar(_indice - 1) : null,
-          icon: const Icon(Icons.skip_previous_outlined),
-        ),
-        IconButton(
-          tooltip: 'Retroceder 10 segundos',
-          onPressed: () => _saltar(const Duration(seconds: -10)),
-          icon: const Icon(Icons.replay_10),
-        ),
-        StreamBuilder<PlayerState>(
-          stream: _player.playerStateStream,
-          builder: (context, snapshot) {
-            final estado = snapshot.data;
-            final reproduciendo =
-                (estado?.playing ?? false) &&
-                estado?.processingState != ProcessingState.completed;
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            tooltip: 'Anterior',
+            onPressed: hayAnterior ? () => _cargar(_indice - 1) : null,
+            icon: const Icon(Icons.skip_previous_outlined),
+          ),
+          IconButton(
+            tooltip: 'Retroceder 10 segundos',
+            onPressed: () => _saltar(const Duration(seconds: -10)),
+            icon: const Icon(Icons.replay_10),
+          ),
+          StreamBuilder<PlayerState>(
+            stream: _player.playerStateStream,
+            builder: (context, snapshot) {
+              final estado = snapshot.data;
+              final reproduciendo =
+                  (estado?.playing ?? false) &&
+                  estado?.processingState != ProcessingState.completed;
 
-            if (_cargando ||
-                estado?.processingState == ProcessingState.loading ||
-                estado?.processingState == ProcessingState.buffering) {
-              return const IconButton(
-                onPressed: null,
+              if (_cargando ||
+                  estado?.processingState == ProcessingState.loading ||
+                  estado?.processingState == ProcessingState.buffering) {
+                return const IconButton(
+                  onPressed: null,
+                  iconSize: AppSpacing.xl32,
+                  icon: Icon(Icons.hourglass_empty),
+                );
+              }
+
+              return IconButton(
+                tooltip: reproduciendo ? 'Pausar' : 'Reproducir',
+                onPressed: _alternar,
                 iconSize: AppSpacing.xl32,
-                icon: Icon(Icons.hourglass_empty),
+                icon: Icon(
+                  reproduciendo ? Icons.pause_outlined : Icons.play_arrow,
+                ),
               );
-            }
-
-            return IconButton(
-              tooltip: reproduciendo ? 'Pausar' : 'Reproducir',
-              onPressed: _alternar,
-              iconSize: AppSpacing.xl32,
-              icon: Icon(
-                reproduciendo ? Icons.pause_outlined : Icons.play_arrow,
-              ),
-            );
-          },
-        ),
-        IconButton(
-          tooltip: 'Adelantar 10 segundos',
-          onPressed: () => _saltar(const Duration(seconds: 10)),
-          icon: const Icon(Icons.forward_10),
-        ),
-        IconButton(
-          tooltip: 'Siguiente',
-          onPressed: haySiguiente ? () => _cargar(_indice + 1) : null,
-          icon: const Icon(Icons.skip_next_outlined),
-        ),
-      ],
-    ),
+            },
+          ),
+          IconButton(
+            tooltip: 'Adelantar 10 segundos',
+            onPressed: () => _saltar(const Duration(seconds: 10)),
+            icon: const Icon(Icons.forward_10),
+          ),
+          IconButton(
+            tooltip: 'Siguiente',
+            onPressed: haySiguiente ? () => _cargar(_indice + 1) : null,
+            icon: const Icon(Icons.skip_next_outlined),
+          ),
+        ],
+      ),
     );
   }
 
